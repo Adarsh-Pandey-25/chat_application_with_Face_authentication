@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+		<meta http-equiv="X-UA-Compatible" content="ie=edge" />
+		<link
+			rel="stylesheet"
+			href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.12.1/css/all.min.css"
+			integrity="sha256-mmgLkCYLUQbXn0B1SRqzHar6dCnv9oZFPEC1g1cwlkk="
+			crossorigin="anonymous"
+		/>
+		<link rel="stylesheet" href="css/style.css" />
+		<title>Chatting App</title>
+		<style>
+			#camera-container {
+				width: 100%;
+				max-width: 640px;
+				margin: 20px auto;
+				text-align: center;
+			}
+			#video {
+				width: 100%;
+				max-width: 640px;
+				margin-bottom: 10px;
+				border-radius: 8px;
+			}
+			#capture-btn {
+				background-color: #667aff;
+				padding: 10px 20px;
+				border: none;
+				border-radius: 4px;
+				color: white;
+				cursor: pointer;
+				margin-bottom: 20px;
+			}
+			#capture-btn:hover {
+				background-color: #5162cc;
+			}
+			.hidden {
+				display: none;
+			}
+			#error-message {
+				color: red;
+				margin: 10px 0;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="join-container">
+			<header class="join-header">
+				<h1><i class="fas fa-comments"></i>Project Discussions Application</h1>
+			</header>
+			<main class="join-main">
+				<div id="camera-container">
+					<video id="video" autoplay playsinline></video>
+					<button id="capture-btn">Verify Face</button>
+					<div id="error-message"></div>
+				</div>
+				<form action="chat.html" id="join-form" class="hidden">
+					<div class="form-control">
+						<label for="username">Employee Id</label>
+						<input
+							type="text"
+							name="username"
+							id="username"
+							placeholder="Enter Employee Id"
+							required
+							readonly
+						/>
+					</div>
+					<div class="form-control">
+						<label for="room">Select Project</label>
+						<select name="room" id="room" required>
+							<option value="" disabled selected>Please Select Your Assigned Project</option>
+							<option value="ChatBot Project">ChatBot Project</option>
+							<option value="AI Project">AI Project</option>
+							<option value="FullStack">FullStack</option>
+							<option value="Databases">Databases</option>
+							<option value="ML Project">ML Project</option>
+						</select>
+					</div>
+					<button type="submit" class="btn">Join Now</button>
+				</form>
+			</main>
+		</div>
+		
+		<script>
+			let videoStream;
+			let serverCheckInterval;
+			const video = document.getElementById('video');
+			const captureBtn = document.getElementById('capture-btn');
+			const joinForm = document.getElementById('join-form');
+			const usernameInput = document.getElementById('username');
+			const errorMessage = document.getElementById('error-message');
+			const roomSelect = document.getElementById('room');
+
+			// Check for existing session on page load
+			window.addEventListener('load', () => {
+				const session = JSON.parse(sessionStorage.getItem('chatSession') || '{}');
+				if (session.username && session.room && session.connected) {
+					// Valid session exists, redirect to chat
+					window.location.href = `chat.html?username=${encodeURIComponent(session.username)}&room=${encodeURIComponent(session.room)}`;
+				} else {
+					// No valid session, start server checks
+					serverCheckInterval = setInterval(checkServers, 2000);
+					checkServers();
+				}
+			});
+
+			// Check if servers are ready
+			async function checkServers() {
+				try {
+					// Check chat server
+					const chatResponse = await fetch('/api/health');
+					const chatData = await chatResponse.json();
+
+					// Check face recognition server
+					const faceResponse = await fetch('http://localhost:5001/health');
+					const faceData = await faceResponse.json();
+
+					if (chatData.status === 'ok' && faceData.status === 'ok') {
+						clearInterval(serverCheckInterval);
+						startVideo();
+						captureBtn.disabled = false;
+						errorMessage.textContent = '';
+					}
+				} catch (err) {
+					captureBtn.disabled = true;
+					errorMessage.textContent = 'Waiting for servers to start... Please wait.';
+				}
+			}
+
+			// Start video stream
+			async function startVideo() {
+				try {
+					videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+					video.srcObject = videoStream;
+				} catch (err) {
+					errorMessage.textContent = 'Error accessing camera. Please ensure camera permissions are granted.';
+				}
+			}
+
+			// Capture and verify face
+			async function verifyFace(retryCount = 0) {
+				try {
+					const canvas = document.createElement('canvas');
+					canvas.width = video.videoWidth;
+					canvas.height = video.videoHeight;
+					canvas.getContext('2d').drawImage(video, 0, 0);
+					
+					// Convert canvas to blob
+					const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg'));
+					
+					// Create form data
+					const formData = new FormData();
+					formData.append('image', blob);
+
+					// Send to server
+					const response = await fetch('/auth/face', {
+						method: 'POST',
+						body: formData
+					});
+
+					const data = await response.json();
+					
+					if (data.error === 'USER_ALREADY_ACTIVE') {
+						errorMessage.textContent = data.message;
+						errorMessage.style.color = '#e74c3c';
+						// Add shake animation to error message
+						errorMessage.style.animation = 'shake 0.5s ease';
+						setTimeout(() => {
+							errorMessage.style.animation = '';
+						}, 500);
+						return;
+					}
+					
+					if (data.success) {
+						// Stop video stream
+						videoStream.getTracks().forEach(track => track.stop());
+						video.parentElement.style.display = 'none';
+						
+						// Store profile image URL
+						sessionStorage.setItem('userProfileImage', data.profileImage);
+						
+						// Show form and set username
+						joinForm.classList.remove('hidden');
+						usernameInput.value = data.user;
+						errorMessage.textContent = '';
+					} else {
+						if (retryCount < 2) {
+							errorMessage.textContent = 'Face not recognized, retrying...';
+							setTimeout(() => verifyFace(retryCount + 1), 1000);
+						} else {
+							errorMessage.textContent = data.error || 'Face not recognized. Please try again.';
+						}
+					}
+				} catch (err) {
+					console.error('Face verification error:', err);
+					if (retryCount < 2) {
+						errorMessage.textContent = 'Error verifying face, retrying...';
+						setTimeout(() => verifyFace(retryCount + 1), 1000);
+					} else {
+						errorMessage.textContent = 'Error verifying face. Please ensure both servers are running and try again.';
+					}
+				}
+			}
+
+			// Add shake animation keyframes
+			const style = document.createElement('style');
+			style.textContent = `
+				@keyframes shake {
+					0%, 100% { transform: translateX(0); }
+					25% { transform: translateX(-5px); }
+					75% { transform: translateX(5px); }
+				}
+			`;
+			document.head.appendChild(style);
+
+			// Event listeners
+			window.addEventListener('load', checkServers);
+			captureBtn.addEventListener('click', () => verifyFace());
+
+			// Handle form submission
+			joinForm.addEventListener('submit', (e) => {
+				const session = {
+					username: usernameInput.value,
+					room: roomSelect.value,
+					connected: true,
+					timestamp: Date.now()
+				};
+				sessionStorage.setItem('chatSession', JSON.stringify(session));
+			});
+		</script>
+	</body>
+</html>
