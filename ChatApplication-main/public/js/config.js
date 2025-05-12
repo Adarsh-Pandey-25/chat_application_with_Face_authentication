@@ -1,7 +1,16 @@
 // Socket.IO server URL configuration
 const config = {
-    socketURL: window.location.hostname === 'localhost' ? 'http://localhost:4000' : window.location.origin
+    // Get the current hostname
+    socketURL: window.location.hostname.includes('app.github.dev') 
+        ? window.location.origin  // Use the full origin for GitHub dev URLs
+        : 'http://localhost:4000',  // Default for local development
+    
+    faceRecognitionURL: window.location.hostname.includes('app.github.dev')
+        ? window.location.origin.replace('-4000.', '-5001.')  // Replace port in GitHub dev URL
+        : 'http://localhost:5001',  // Default for local development
 };
+
+// Generate and save favicon if it doesn't exist
 
 // Generate and save favicon if it doesn't exist
 (function createFavicon() {

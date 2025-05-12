@@ -28,6 +28,14 @@ const io = new Server(server, {
   allowEIO3: true
 });
 
+// Add CORS middleware for Express
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  next();
+});
+
 // Set paths for face recognition and profile images
 const faceRecognitionDir = path.join(__dirname, '..', 'face_recognition', 'known_faces');
 const profileImagesDir = path.join(__dirname, 'public', 'profile_images');
@@ -84,11 +92,14 @@ app.post('/auth/face', upload.single('image'), async (req, res) => {
     
     const data = await response.json();
 
-    // If face verification was successful, check for active session
+    // If face verification was successful
     if (data.success) {
       const username = data.user;
+      
+      // Check if user is already active in a session
       if (isUserActive(username)) {
         return res.json({
+          success: false,
           error: 'USER_ALREADY_ACTIVE',
           message: 'This user is already logged in on another device.'
         });
@@ -103,6 +114,7 @@ app.post('/auth/face', upload.single('image'), async (req, res) => {
       if (!userImageFile) {
         console.error(`Profile image not found for user: ${username}`);
         return res.json({
+          success: false,
           error: 'PROFILE_IMAGE_NOT_FOUND',
           message: 'Profile image not found.'
         });
@@ -111,20 +123,18 @@ app.post('/auth/face', upload.single('image'), async (req, res) => {
       // Get the profile image path with correct extension
       const profileImagePath = `/profile_images/${userImageFile}`;
       
-      // Add profile image path to response and user data
+      // Add profile image path to response
       data.profileImage = profileImagePath;
-      
-      // Update user profile in the users utility
-      const userWithProfile = userJoin(req.socket?.id, username, null, profileImagePath);
-      if (userWithProfile.error) {
-        return res.json(userWithProfile);
-      }
     }
 
     res.json(data);
   } catch (error) {
     console.error('Face authentication error:', error);
-    res.status(500).json({ error: 'Face authentication failed' });
+    res.status(500).json({ 
+      success: false, 
+      error: 'Face authentication failed',
+      message: 'Internal server error during face authentication.'
+    });
   }
 });
 

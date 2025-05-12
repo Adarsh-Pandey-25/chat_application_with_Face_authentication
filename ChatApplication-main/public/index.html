@@ -7,12 +7,11 @@
 		<meta http-equiv="X-UA-Compatible" content="ie=edge" />
 		<link
 			rel="stylesheet"
-			href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.12.1/css/all.min.css"
-			integrity="sha256-mmgLkCYLUQbXn0B1SRqzHar6dCnv9oZFPEC1g1cwlkk="
+			href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
 			crossorigin="anonymous"
 		/>
 		<link rel="stylesheet" href="css/style.css" />
-		<title>Chatting App</title>
+		<title>Project Discussions Application</title>
 		<style>
 			#camera-container {
 				width: 100%;
@@ -86,7 +85,9 @@
 			</main>
 		</div>
 		
-		<script>
+		<script type="module">
+			import config from './js/config.js';
+			
 			let videoStream;
 			let serverCheckInterval;
 			const video = document.getElementById('video');
@@ -117,7 +118,7 @@
 					const chatData = await chatResponse.json();
 
 					// Check face recognition server
-					const faceResponse = await fetch('http://localhost:5001/health');
+					const faceResponse = await fetch(`${config.faceRecognitionURL}/health`);
 					const faceData = await faceResponse.json();
 
 					if (chatData.status === 'ok' && faceData.status === 'ok') {
@@ -129,6 +130,7 @@
 				} catch (err) {
 					captureBtn.disabled = true;
 					errorMessage.textContent = 'Waiting for servers to start... Please wait.';
+					console.error('Server check error:', err);
 				}
 			}
 
@@ -139,6 +141,7 @@
 					video.srcObject = videoStream;
 				} catch (err) {
 					errorMessage.textContent = 'Error accessing camera. Please ensure camera permissions are granted.';
+					console.error('Camera error:', err);
 				}
 			}
 
@@ -157,14 +160,15 @@
 					const formData = new FormData();
 					formData.append('image', blob);
 
-					// Send to server
-					const response = await fetch('/auth/face', {
+					// Send to server using config URL
+					const response = await fetch(`${config.faceRecognitionURL}/verify-face`, {
 						method: 'POST',
 						body: formData
 					});
 
 					const data = await response.json();
 					
+					// Handle multiple device login
 					if (data.error === 'USER_ALREADY_ACTIVE') {
 						errorMessage.textContent = data.message;
 						errorMessage.style.color = '#e74c3c';
@@ -173,6 +177,9 @@
 						setTimeout(() => {
 							errorMessage.style.animation = '';
 						}, 500);
+						
+						// Clear any existing session
+						sessionStorage.removeItem('chatSession');
 						return;
 					}
 					
@@ -188,12 +195,20 @@
 						joinForm.classList.remove('hidden');
 						usernameInput.value = data.user;
 						errorMessage.textContent = '';
+						
+						// Show success message
+						const successMsg = document.createElement('div');
+						successMsg.className = 'success-message';
+						successMsg.textContent = 'Face verification successful! Please select your project to continue.';
+						successMsg.style.color = '#2ecc71';
+						successMsg.style.marginBottom = '15px';
+						joinForm.insertBefore(successMsg, joinForm.firstChild);
 					} else {
 						if (retryCount < 2) {
 							errorMessage.textContent = 'Face not recognized, retrying...';
 							setTimeout(() => verifyFace(retryCount + 1), 1000);
 						} else {
-							errorMessage.textContent = data.error || 'Face not recognized. Please try again.';
+							errorMessage.textContent = data.message || 'Face not recognized. Please try again.';
 						}
 					}
 				} catch (err) {
@@ -219,7 +234,6 @@
 			document.head.appendChild(style);
 
 			// Event listeners
-			window.addEventListener('load', checkServers);
 			captureBtn.addEventListener('click', () => verifyFace());
 
 			// Handle form submission
