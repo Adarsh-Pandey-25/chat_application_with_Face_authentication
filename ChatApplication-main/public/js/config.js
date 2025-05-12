@@ -11,8 +11,6 @@ const config = {
 };
 
 // Generate and save favicon if it doesn't exist
-
-// Generate and save favicon if it doesn't exist
 (function createFavicon() {
     const canvas = document.createElement('canvas');
     canvas.width = 32;

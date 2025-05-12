@@ -169,21 +169,23 @@ a:hover {
 .user-item {
   display: flex;
   align-items: center;
-  gap: 15px;
   padding: 8px;
-  margin-bottom: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
 }
 
-.user-avatar {
-  width: 40px;
-  height: 40px;
+.user-item:hover {
+  background-color: rgba(0,0,0,0.05);
+}
+
+.user-item .profile-pic {
+  width: 27px;
+  height: 27px;
   border-radius: 50%;
+  margin-right: 8px;
   object-fit: cover;
-  border: 2px solid var(--primary-color);
-  background: #fff;
-  min-width: 40px;
-  display: block;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background-color: #e0e0e0; /* Fallback background color */
 }
 
 .user-name {
@@ -217,14 +219,70 @@ a:hover {
 }
 
 .chat-messages .message {
-  padding: 15px;
-  margin-bottom: 20px;
-  background-color: #f8f9fa;
-  border-radius: var(--border-radius);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  animation: fadeIn 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 15px;
+  margin-bottom: 15px;
+  border-radius: 12px;
+  background-color: #f4f4f4;
   max-width: 85%;
-  align-self: flex-start;
+  position: relative;
+}
+
+.message .message-header {
+  margin-bottom: 8px;
+}
+
+.message .user-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.message .username {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--secondary-color);
+}
+
+.message.own-message .username {
+  color: #fff;
+}
+
+.message .profile-pic {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background-color: #e0e0e0;
+}
+
+.message .message-content {
+  position: relative;
+  padding-right: 65px;
+  min-height: 24px;
+}
+
+.message .text {
+  margin-left: 40px;
+  line-height: 1.6;
+  font-size: 15.5px;
+  margin-bottom: 18px;
+  word-wrap: break-word;
+}
+
+.message .time {
+  position: absolute;
+  bottom: 2px;
+  right: 10px;
+  font-size: 11.5px;
+  color: #666;
+  opacity: 0.8;
+}
+
+.message.own-message .time {
+  color: rgba(255, 255, 255, 0.8);
 }
 
 /* Messages from the current user */
@@ -576,7 +634,7 @@ body.dark-mode .chat-container {
 }
 
 body.dark-mode .chat-messages .message {
-  background: #2a2a2a;
+  background-color: #2a2a2a;
   color: #fff;
 }
 
@@ -699,5 +757,95 @@ body.dark-mode .toast {
 
 body.dark-mode .system-message {
   background-color: rgba(74, 144, 226, 0.2) !important;
+  color: #fff;
+}
+
+/* Dark mode adjustments */
+body.dark-mode .message {
+  background-color: #2a2a2a;
+}
+
+body.dark-mode .message .username {
+  color: #fff;
+}
+
+body.dark-mode .message .time {
+  color: rgba(255, 255, 255, 0.6);
+}
+
+body.dark-mode .message.own-message {
+  background-color: var(--primary-color);
+}
+
+.dark-mode .user-item:hover {
+  background-color: rgba(255,255,255,0.05);
+}
+
+.dark-mode .profile-pic {
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+/* Add error handling for profile pictures */
+.profile-pic {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  background-color: #e0e0e0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 500;
+  color: #666;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+
+.profile-pic::after {
+  content: attr(alt);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background-color: #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: #666;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.profile-pic:not([src]),
+.profile-pic[src=""],
+.profile-pic[src="#"],
+.profile-pic[src="undefined"],
+.profile-pic[src="null"],
+.profile-pic[src$="?t="] {
+  background-color: #e0e0e0;
+}
+
+.profile-pic:not([src])::after,
+.profile-pic[src=""]::after,
+.profile-pic[src="#"]::after,
+.profile-pic[src="undefined"]::after,
+.profile-pic[src="null"]::after,
+.profile-pic[src$="?t="]::after {
+  opacity: 1;
+}
+
+/* Dark mode adjustments */
+body.dark-mode .profile-pic {
+  background-color: #3a3a3a;
+  color: #fff;
+}
+
+body.dark-mode .profile-pic::after {
+  background-color: #3a3a3a;
   color: #fff;
 }

@@ -37,12 +37,132 @@
 			#capture-btn:hover {
 				background-color: #5162cc;
 			}
+			#capture-btn:disabled {
+				background-color: #cccccc;
+				cursor: not-allowed;
+			}
 			.hidden {
 				display: none;
 			}
 			#error-message {
 				color: red;
 				margin: 10px 0;
+				padding: 10px;
+				border-radius: 4px;
+				font-weight: 500;
+			}
+			.error-popup {
+				position: fixed;
+				top: 50%;
+				left: 50%;
+				transform: translate(-50%, -50%);
+				background: white;
+				padding: 20px;
+				border-radius: 8px;
+				box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+				z-index: 1000;
+				text-align: center;
+				max-width: 400px;
+				width: 90%;
+			}
+			.error-popup h3 {
+				color: #e74c3c;
+				margin-bottom: 15px;
+			}
+			.error-popup p {
+				margin-bottom: 20px;
+				color: #666;
+			}
+			.error-popup button {
+				background: #e74c3c;
+				color: white;
+				border: none;
+				padding: 10px 20px;
+				border-radius: 4px;
+				cursor: pointer;
+				font-weight: 500;
+			}
+			.error-popup button:hover {
+				background: #c0392b;
+			}
+			.overlay {
+				position: fixed;
+				top: 0;
+				left: 0;
+				right: 0;
+				bottom: 0;
+				background: rgba(0, 0, 0, 0.5);
+				z-index: 999;
+			}
+			#notification-container {
+				position: fixed;
+				top: 20px;
+				right: 20px;
+				z-index: 1000;
+			}
+
+			.notification {
+				background: white;
+				padding: 15px 25px;
+				border-radius: 8px;
+				box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+				margin-bottom: 10px;
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				max-width: 300px;
+				opacity: 0;
+				transform: translateX(100%);
+			}
+
+			.notification.success {
+				border-left: 4px solid #2ecc71;
+			}
+
+			.notification.error {
+				border-left: 4px solid #e74c3c;
+			}
+
+			@keyframes slideIn {
+				0% {
+					transform: translateX(100%);
+					opacity: 0;
+				}
+				100% {
+					transform: translateX(0);
+					opacity: 1;
+				}
+			}
+
+			.notification i {
+				font-size: 18px;
+			}
+
+			.notification.success i {
+				color: #2ecc71;
+			}
+
+			.notification.error i {
+				color: #e74c3c;
+			}
+
+			@keyframes slideOut {
+				0% {
+					transform: translateX(0);
+					opacity: 1;
+				}
+				100% {
+					transform: translateX(100%);
+					opacity: 0;
+				}
+			}
+
+			.notification.show {
+				animation: slideIn 0.3s ease forwards;
+			}
+
+			.notification.hide {
+				animation: slideOut 0.3s ease forwards;
 			}
 		</style>
 	</head>
@@ -85,6 +205,8 @@
 			</main>
 		</div>
 		
+		<div id="notification-container"></div>
+		
 		<script type="module">
 			import config from './js/config.js';
 			
@@ -97,14 +219,33 @@
 			const errorMessage = document.getElementById('error-message');
 			const roomSelect = document.getElementById('room');
 
+			function showMultipleLoginError(username) {
+				// Create overlay
+				const overlay = document.createElement('div');
+				overlay.className = 'overlay';
+				document.body.appendChild(overlay);
+
+				// Create popup
+				const popup = document.createElement('div');
+				popup.className = 'error-popup';
+				popup.innerHTML = `
+					<h3><i class="fas fa-exclamation-circle"></i> Multiple Login Detected</h3>
+					<p>User <strong>${username}</strong> is already logged in on another device.</p>
+					<p>Please log out from the other device before attempting to log in again.</p>
+					<button onclick="window.location.reload()">Try Again</button>
+				`;
+				document.body.appendChild(popup);
+
+				// Clear any existing session
+				sessionStorage.removeItem('chatSession');
+			}
+
 			// Check for existing session on page load
 			window.addEventListener('load', () => {
 				const session = JSON.parse(sessionStorage.getItem('chatSession') || '{}');
 				if (session.username && session.room && session.connected) {
-					// Valid session exists, redirect to chat
 					window.location.href = `chat.html?username=${encodeURIComponent(session.username)}&room=${encodeURIComponent(session.room)}`;
 				} else {
-					// No valid session, start server checks
 					serverCheckInterval = setInterval(checkServers, 2000);
 					checkServers();
 				}
@@ -126,11 +267,12 @@
 						startVideo();
 						captureBtn.disabled = false;
 						errorMessage.textContent = '';
+						return true;
 					}
+					return false;
 				} catch (err) {
 					captureBtn.disabled = true;
 					errorMessage.textContent = 'Waiting for servers to start... Please wait.';
-					console.error('Server check error:', err);
 				}
 			}
 
@@ -148,6 +290,17 @@
 			// Capture and verify face
 			async function verifyFace(retryCount = 0) {
 				try {
+					// Check servers before proceeding
+					const serversReady = await checkServers();
+					if (!serversReady) {
+						captureBtn.disabled = false;
+						return;
+					}
+
+					captureBtn.disabled = true;
+					captureBtn.textContent = 'Verifying...';
+					errorMessage.textContent = '';
+
 					const canvas = document.createElement('canvas');
 					canvas.width = video.videoWidth;
 					canvas.height = video.videoHeight;
@@ -160,65 +313,55 @@
 					const formData = new FormData();
 					formData.append('image', blob);
 
-					// Send to server using config URL
-					const response = await fetch(`${config.faceRecognitionURL}/verify-face`, {
+					// First, send to face recognition server to get username
+					const faceResponse = await fetch(`${config.faceRecognitionURL}/verify-face`, {
 						method: 'POST',
 						body: formData
 					});
 
-					const data = await response.json();
+					if (!faceResponse.ok) {
+						throw new Error('Face verification failed. Please try again.');
+					}
+
+					const faceData = await faceResponse.json();
 					
-					// Handle multiple device login
-					if (data.error === 'USER_ALREADY_ACTIVE') {
-						errorMessage.textContent = data.message;
-						errorMessage.style.color = '#e74c3c';
-						// Add shake animation to error message
-						errorMessage.style.animation = 'shake 0.5s ease';
-						setTimeout(() => {
-							errorMessage.style.animation = '';
-						}, 500);
-						
-						// Clear any existing session
-						sessionStorage.removeItem('chatSession');
+					if (!faceData.success) {
+						throw new Error(faceData.message || 'Face not recognized. Please try again.');
+					}
+
+					// Now check if user is already active
+					const activeCheckResponse = await fetch(`/api/check-user/${faceData.user}`);
+					const activeCheckData = await activeCheckResponse.json();
+
+					if (activeCheckData.isActive) {
+						showMultipleLoginError(faceData.user);
 						return;
 					}
-					
-					if (data.success) {
-						// Stop video stream
+
+					// Success! Show the join form
+					usernameInput.value = faceData.user;
+					joinForm.classList.remove('hidden');
+					video.classList.add('hidden');
+					captureBtn.classList.add('hidden');
+					errorMessage.textContent = '';
+
+					// Store profile picture path in session
+					const profilePicPath = `/profile_images/known_face_${faceData.user.toLowerCase()}.jpg`;
+					sessionStorage.setItem('userProfileImage', profilePicPath);
+
+					// Show success notification
+					showNotification('Face verification successful!', 'success');
+
+					// Stop video stream
+					if (videoStream) {
 						videoStream.getTracks().forEach(track => track.stop());
-						video.parentElement.style.display = 'none';
-						
-						// Store profile image URL
-						sessionStorage.setItem('userProfileImage', data.profileImage);
-						
-						// Show form and set username
-						joinForm.classList.remove('hidden');
-						usernameInput.value = data.user;
-						errorMessage.textContent = '';
-						
-						// Show success message
-						const successMsg = document.createElement('div');
-						successMsg.className = 'success-message';
-						successMsg.textContent = 'Face verification successful! Please select your project to continue.';
-						successMsg.style.color = '#2ecc71';
-						successMsg.style.marginBottom = '15px';
-						joinForm.insertBefore(successMsg, joinForm.firstChild);
-					} else {
-						if (retryCount < 2) {
-							errorMessage.textContent = 'Face not recognized, retrying...';
-							setTimeout(() => verifyFace(retryCount + 1), 1000);
-						} else {
-							errorMessage.textContent = data.message || 'Face not recognized. Please try again.';
-						}
 					}
+
 				} catch (err) {
-					console.error('Face verification error:', err);
-					if (retryCount < 2) {
-						errorMessage.textContent = 'Error verifying face, retrying...';
-						setTimeout(() => verifyFace(retryCount + 1), 1000);
-					} else {
-						errorMessage.textContent = 'Error verifying face. Please ensure both servers are running and try again.';
-					}
+					console.error('Verification error:', err);
+					errorMessage.textContent = err.message || 'Error verifying face. Please try again.';
+					captureBtn.disabled = false;
+					captureBtn.textContent = 'Verify Face';
 				}
 			}
 
@@ -246,6 +389,36 @@
 				};
 				sessionStorage.setItem('chatSession', JSON.stringify(session));
 			});
+
+			// Add notification function
+			function showNotification(message, type = 'success') {
+				const notification = document.createElement('div');
+				notification.className = `notification ${type}`;
+				notification.innerHTML = `
+					<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i>
+					<span>${message}</span>
+				`;
+				
+				const container = document.getElementById('notification-container');
+				container.appendChild(notification);
+				
+				// Force a reflow to ensure the initial state is properly set
+				notification.offsetHeight;
+				
+				// Start slide in animation
+				notification.classList.add('show');
+				
+				// After 3 seconds, start the slide out animation
+				setTimeout(() => {
+					notification.classList.add('hide');
+					notification.classList.remove('show');
+					
+					// Remove the element after animation completes
+					notification.addEventListener('animationend', () => {
+						notification.remove();
+					}, { once: true });
+				}, 3000);
+			}
 		</script>
 	</body>
 </html>

@@ -69,6 +69,66 @@ socket.on('forceDisconnect', (data) => {
   }, 2000);
 });
 
+// Function to get profile image URL
+function getProfileImageUrl(username) {
+  if (!username) return null;
+  // Keep the numbers and special characters in the username
+  const baseUsername = username.toLowerCase();
+  return `/profile_images/known_face_${baseUsername}`;
+}
+
+// Function to create profile image element
+function createProfileImage(username, size = 'small') {
+  const img = document.createElement('img');
+  img.className = 'profile-pic ' + size;
+  const initial = username ? username.charAt(0).toUpperCase() : '?';
+  img.alt = initial;
+  
+  const imageUrl = getProfileImageUrl(username);
+  console.log('Attempting to load profile image for:', username);
+  console.log('Image URL base:', imageUrl);
+  
+  if (imageUrl) {
+    // Try both .jpg and .jpeg extensions
+    const tryNextExtension = () => {
+      if (img.dataset.triedJpeg) {
+        console.log('Failed to load profile image for:', username, 'after trying both extensions');
+        img.removeAttribute('src');
+        // Show initial as fallback
+        img.style.backgroundColor = '#e0e0e0';
+        img.style.color = '#666';
+        img.textContent = initial;
+        return;
+      }
+      if (!img.dataset.triedJpg) {
+        img.dataset.triedJpg = 'true';
+        const jpgUrl = `${imageUrl}.jpg`;
+        console.log('Trying .jpg extension:', jpgUrl);
+        img.src = jpgUrl;
+      } else {
+        img.dataset.triedJpeg = 'true';
+        const jpegUrl = `${imageUrl}.jpeg`;
+        console.log('Trying .jpeg extension:', jpegUrl);
+        img.src = jpegUrl;
+      }
+    };
+    
+    // Add error handling
+    img.onerror = tryNextExtension;
+    
+    // Start with .jpg
+    tryNextExtension();
+  } else {
+    console.log('No image URL available for:', username);
+    // Show initial as fallback
+    img.style.backgroundColor = '#e0e0e0';
+    img.style.color = '#666';
+    img.textContent = initial;
+  }
+  
+  return img;
+}
+
 // Store session data when joining
 socket.on('connect', () => {
   const session = {
@@ -77,7 +137,7 @@ socket.on('connect', () => {
     connected: true,
     timestamp: Date.now(),
     socketId: socket.id,
-    profileImage: sessionStorage.getItem('userProfileImage')
+    profileImage: getProfileImageUrl(username)
   };
   sessionStorage.setItem('chatSession', JSON.stringify(session));
 });
@@ -181,7 +241,7 @@ function showToast(message, type = 'success') {
   
   setTimeout(() => {
     toast.remove();
-  }, 3000);
+  }, 5000);
 }
 
 // Typing indicator
@@ -296,73 +356,53 @@ function handleCommand(msg) {
   }
 }
 
-// Output message to DOM
+// Update outputMessage function to use profile images
 function outputMessage(message) {
   const div = document.createElement('div');
   div.classList.add('message');
-  
-  // Add special styling for system messages
-  if (message.username === 'System' || message.username === 'Bot') {
-    div.classList.add('system-message');
-    
-    // Add close button for welcome messages
-    if (message.text.includes('Welcome to')) {
-      div.innerHTML = `
-        <div class="message-header">
-          <p class="meta">
-            ${message.username} 
-            <span>${message.time}</span>
-          </p>
-          <button class="close-message" title="Dismiss message">
-            <i class="fas fa-times"></i>
-          </button>
-        </div>
-        <p class="text">${message.text}</p>
-      `;
-
-      // Add event listener to close button
-      setTimeout(() => {
-        const closeBtn = div.querySelector('.close-message');
-        if (closeBtn) {
-          closeBtn.addEventListener('click', () => {
-            div.style.animation = 'fadeOut 0.3s ease forwards';
-            setTimeout(() => div.remove(), 300);
-          });
-        }
-      }, 0);
-    } else {
-      div.innerHTML = `
-        <p class="meta">
-          ${message.username} 
-          <span>${message.time}</span>
-        </p>
-        <p class="text">${message.text}</p>
-      `;
-    }
-  } else {
-    // Add class for own messages
-    if (message.username === username) {
-      div.classList.add('own-message');
-    }
-    
-    div.innerHTML = `
-      <p class="meta">
-        ${message.username} 
-        <span>${message.time}</span>
-        ${message.username === username ? '<span class="message-status">✓</span>' : ''}
-      </p>
-      <p class="text">${message.text}</p>
-    `;
+  if (message.username === username) {
+    div.classList.add('own-message');
   }
+
+  const header = document.createElement('div');
+  header.className = 'message-header';
   
-  // Add message to DOM
-  chatMessages.appendChild(div);
+  // Create user info container
+  const userInfo = document.createElement('div');
+  userInfo.className = 'user-info';
   
-  // Scroll to bottom smoothly
-  chatMessages.scrollTo({
-    top: chatMessages.scrollHeight,
-    behavior: 'smooth'
-  });
+  // Add profile picture
+  const profilePic = createProfileImage(message.username, 'small');
+  userInfo.appendChild(profilePic);
+  
+  // Add username
+  const usernameDiv = document.createElement('div');
+  usernameDiv.className = 'username';
+  usernameDiv.textContent = message.username;
+  userInfo.appendChild(usernameDiv);
+  
+  header.appendChild(userInfo);
+  div.appendChild(header);
+  
+  // Add message content container
+  const messageContent = document.createElement('div');
+  messageContent.className = 'message-content';
+  
+  // Add message text
+  const messageText = document.createElement('p');
+  messageText.className = 'text';
+  messageText.textContent = message.text;
+  messageContent.appendChild(messageText);
+  
+  // Add time
+  const timeDiv = document.createElement('div');
+  timeDiv.className = 'time';
+  timeDiv.textContent = message.time;
+  messageContent.appendChild(timeDiv);
+  
+  div.appendChild(messageContent);
+  
+  document.querySelector('.chat-messages').appendChild(div);
 }
 
 // Add room name to DOM
@@ -370,21 +410,14 @@ function outputRoomName(room) {
   roomName.innerText = room;
 }
 
-// Add users to DOM
+// Update outputUsers function to use profile images
 function outputUsers(users) {
   userList.innerHTML = users
     .map(user => `
-      <li>
-        <div class="user-item">
-          ${user.profileImage 
-            ? `<img src="${user.profileImage}" alt="${user.username}" class="user-avatar" />`
-            : `<i class="fas fa-circle online-indicator"></i>`
-          }
-          <span class="user-name">
-            ${user.username}
-            ${user.username === username ? ' (You)' : ''}
-          </span>
-        </div>
+      <li class="user-item">
+        ${createProfileImage(user.username).outerHTML}
+        <span class="user-name">${user.username}</span>
+        <span class="online-indicator">●</span>
       </li>
     `)
     .join('');
